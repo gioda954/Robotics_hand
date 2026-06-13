@@ -8,8 +8,6 @@ This repository contains the ME 507 term project firmware and portfolio document
 - Doxygen configuration: [Doxyfile](Doxyfile)
 - Hosted documentation URL after GitHub Pages deployment: <https://gioda954.github.io/Robotics_hand/>
 
-The GitHub Actions workflow in `.github/workflows/doxygen-pages.yml` builds Doxygen HTML from `Doxyfile` and publishes it to GitHub Pages. If Pages is not already enabled for this repository, enable Pages with GitHub Actions as the source in the repository settings.
-
 ## Repository Layout
 
 - `Codebase/` - STM32CubeIDE project, including `.ioc`, startup files, linker scripts, application source, STM32 HAL drivers, CMSIS files, and USB device middleware.
