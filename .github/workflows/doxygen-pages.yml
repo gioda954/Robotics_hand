@@ -28,6 +28,9 @@ jobs:
       - name: Build documentation
         run: doxygen Doxyfile
 
+      - name: Copy portfolio media
+        run: cp -R docs/media docs/doxygen/html/
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
