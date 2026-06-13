@@ -16,15 +16,48 @@ All iterations of the robotic hand followed a similar design approach, with each
 
 The ‘thumb’ appendage was certainly the most complicated bio-geometric feature and was severely overlooked within the early stages of development. The preliminary prototype shown below in Figure 1 is clearly inspired by the shape of a human hand, but the functionality wasn’t there. 
 
+<p align="center">
+  <img src="media/Prototype1CAD.png" width="45%">
+  <img src="media/Protoype1physical.jpeg" width="45%">
+</p>
+
+<p align="center">
+  <b>Figure 1 – First Physical Prototype Produced</b>
+</p>
+
 The main issue was that our compliant fingers could only be bent in one direction. If the bending direction of the thumb and fingers were not mostly opposing, no grasping could be done. In addition to these shortcomings, the compliant fingers were too rigid, requiring a large amount of force to bend properly. This issue was addressed in the next design iteration by reducing the width of the compliant joint. However, several iterations were required to balance flexibility with printability, as excessively thin joints were prone to tearing during removal from the print bed.
+
+<p align="center">
+  <img src="media/Prototype2CAD.png" width="45%">
+  <img src="media/Prototype2physical.jpeg" width="45%">
+</p>
+
+<p align="center">
+  <b>Figure 2 – Second Prototype</b>
+</p>
 
 The second prototype shown in Figure 2 was a vast improvement on the first design. The thumb mechanism was secured to the bottom of the palm design which allowed it to bend towards the fingers, allowing for a much better grasping motion. Unfortunately, due to the unrefined angle and position of the thumb mount, contact with an object consisted solely between the left (pointer) finger and the thumb. Additionally, the compliant mechanism design needed improvement as they would be more inclined to bend near the tip first due to their geometry, causing a reduction in gripping surface area. We still needed something more reliable that could provide a more consistent and simpler grasping motion. 
 
 It was due time for a complete redesign. Both the palm and finger designs were changed as part of our next and final prototype. Starting with the compliant mechanism ‘finger’ and ‘thumb’, a completely different approach was taken to increase grip surface area. Referencing Figure 3 below, you can see we did this by increasing the number of joints while reducing the angle between them. This new iteration took multiple prints to get right, as the first prints weren’t rigid enough to elastically return to the starting position. Even then, we still had to apply hot glue over the first ‘knuckle’ joint to further add to its joint rigidity and ensure that the fishing line was under constant tension. 
 
-Next for the structural ‘palm’ component, there were several design changes implemented. Some of the smaller updates included adding PCB mounting holes, tool-access openings, and revising the motor mounts, but the main refinement was once again the thumb geometry.  Much like the compliant mechanism redesign, all hope of utilizing biomimicry was thrown out the window and replaced with more advantageous geometry. The thumb mount was placed directly in line to both of the fingers so that their actuation paths were in parallel. This allowed the robotic hand to grip objects with a more balanced force distribution along both sides. The finger and thumb mounts were also slightly angled forward towards each other to create a smaller and ideally more accurate gripping area. These mechanical changes eventually contributed to producing the first, reliably gripping prototype capable of achieving our goals for this project. 
+<p align="center">
+  <img src="media/FinalFingerCAD.png" width="70%">
+</p>
 
+<p align="center">
+  <b>Figure 3 – Compliant Mechanism Redesign</b>
+</p>
 
+Next for the structural ‘palm’ component, there were several design changes implemented. Some of the smaller updates included adding PCB mounting holes, tool-access openings, and revising the motor mounts, but the main refinement was once again the thumb geometry.  Much like the compliant mechanism redesign, all hope of utilizing biomimicry was thrown out the window and replaced with more advantageous geometry. The thumb mount was placed directly in line to both of the fingers so that their actuation paths were in parallel. This allowed the robotic hand to grip objects with a more balanced force distribution along both sides. The finger and thumb mounts were also slightly angled forward towards each other to create a smaller and ideally more accurate gripping area. These mechanical changes shown in Figure 4 below eventually contributed to producing the first, reliably gripping prototype capable of achieving our goals for this project. 
+
+<p align="center">
+  <img src="media/Finaltopdownview.jpeg" width="45%">
+  <img src="media/Finalsideview.jpeg" width="45%">
+</p>
+
+<p align="center">
+  <b>Figure 4 – Final Robotic Hand CAD Design</b>
+</p>
 
 ## Major Hardware
 
@@ -37,6 +70,26 @@ The mechanical system is modeled in firmware as three independently actuated fin
 The hand uses three motor channels, one per finger. Motor speed is commanded by PWM duty cycle from TIM1, while direction is set by GPIO phase pins on PB0, PB1, and PB2. The firmware stores each motor channel in a `MotorRuntime` structure containing its PWM timer, encoder timer, phase pin, pressure sensor index, current state, duty cycle, and encoder-derived travel measurements.
 
 The code ramps duty cycle rather than stepping immediately to full command. `Motor_RampDuty()` limits the change by `MOTOR_DUTY_RAMP_STEP_PERCENT` every `MOTOR_DUTY_RAMP_STEP_MS`, which reduces abrupt startup behavior and gives the pressure controller a more predictable actuator response.
+
+## Challenges and Workarounds
+
+Like the mechanical design, the electrical system also introduced several unexpected challenges that required workarounds throughout the later stages of the project. The first major issue we ran into was related to the JST-style motor connector adapter that connected the motors to our PCB. During the board design process, the connector footprint was unintentionally routed backward, effectively flipping the connector orientation 180 degrees. As a result, the motor driver outputs on the board did not correctly match the corresponding motor connector inputs. At first, we assumed that the only solution would be to desolder and re-solder the wire-to-board connector in the correct orientation. However, this would have been difficult and risky given the limited time remaining and the possibility of damaging the board. We eventually landed on the much simpler, although less elegant, solution of cutting the JST connector wires and re-soldering them into the correct order. This can be seen by referencing the final design in Figure 4. The wire colors were not consistent throughout the connector assembly, which made this process slightly more confusing than expected, but the workaround was successful and allowed the motors to function properly.
+
+The next set of issues revolved around incorrect resistor values on the PCB. The resistor values originally selected for the force sensor circuit were too high, which limited the usefulness and sensitivity of the sensor readings. Initially, we considered removing and replacing the small surface-mount resistors directly on the board, but this would have been tedious and difficult to do reliably. Instead, we realized that an additional 7.5k Ohm resistor could be soldered in parallel across the existing onboard resistor by using the vias on either side of it. This allowed us to reduce the effective resistance to a more useful value without fully removing the original components. These additional resistors shown in Figure 5 were soldered to the bottom side of the PCB, which did create a new mechanical constraint. Because the added components extended below the board, spacers had to be added to the PCB mounting holes to prevent the resistors from contacting the bottom of the palm assembly.
+
+<p align="center">
+  <img src="media/SolderedResistors.jpeg" width="70%">
+</p>
+
+<p align="center">
+  <b>Figure 5 – Soldered Parallel Resistors for Force Sensor Circuit</b>
+</p>
+
+Unfortunately, not all resistor-related issues were as easy to correct. Another problem came from the current limit resistor values used for the motor drivers. The selected resistance value was much too high, which caused the motor current limit to be significantly lower than intended. This limited the available motor current to approximately 0.25 amps per motor, which reduced the output torque of the motors and ultimately limited the gripping force of the robotic hand. In theory, this issue could have been corrected by adding a carefully selected resistor in parallel with the existing current limit resistor. However, the required resistance value was much more specific than the parts we had available, and there was not enough time left in the project to source the correct component. Because of this, the current limit issue remained unresolved and became one of the main electrical limitations of the final prototype.
+
+The final major electrical issue was related to the current sensing feature of the motor drivers. During testing, we were not receiving any usable current sensor values, even though the rest of the motor driver circuitry appeared to be functioning. After further inspection, we determined that the footprint used for the motor driver had two of the current sensing pins switched. This meant that the current sensing circuit was not connected correctly on the PCB itself. Unlike the connector wiring or force sensor resistor issue, this problem was not realistically solvable with the time and resources we had available. Correcting it would have most likely required a full revision of the PCB. While losing the current sensing functionality was disappointing, the rest of the feedback system was still usable. Thankfully, both the encoders and force sensors were functional, which allowed the final prototype to still demonstrate closed-loop sensing and basic gripping performance.
+
+
 
 ## Sensors
 
