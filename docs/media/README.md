@@ -1,13 +1,15 @@
-# Media Checklist
+# Media Assets
 
-Place final media files for the portfolio in this folder and link them from `docs/portfolio.md`.
+Portfolio media files used by `docs/portfolio.md`.
 
-Recommended files:
+Current PCB assets:
 
-- `demo-video-url.txt` or a Markdown link to a hosted demonstration video.
+- `pcb-system-block-diagram.png` - electrical block diagram for power, motor drivers, sensors, and MCU interfaces.
+- `pcb-3d-render.png` - rendered view of the assembled controller PCB.
+- `pcb-routing-layout.png` - PCB layout and routing view.
+
+Recommended remaining files:
+
 - `assembled-hand.jpg` showing the completed robotic hand.
-- `custom-pcb.jpg` showing the populated PCB.
-- `cad-render.png` showing the mechanical design.
+- `demo-video-url.txt` or a Markdown link to a hosted demonstration video.
 - `rework-photos/` for any board or mechanical rework images.
-
-No media files were present in the local project folder when this repository was prepared.

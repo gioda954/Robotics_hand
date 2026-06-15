@@ -102,7 +102,39 @@ Each motor also has encoder feedback. Encoder counts are accumulated in signed s
 
 ## Custom PCB
 
-The CubeMX project is configured for a custom board. The custom PCB's firmware-facing responsibilities are to route the STM32F411CEUx to the motor driver PWM inputs, direction inputs, encoder channels, analog pressure outputs, USB connector, and power system. The pin map reflected in firmware is:
+The CubeMX project is configured for a custom PCB built around the STM32F411CEUx. The board brings the full hand controller onto one compact assembly: power regulation, three motor-driver channels, pressure-sensor inputs, encoder interfaces, USB, and the external connectors needed to reach each finger.
+
+<p align="center">
+  <img src="media/pcb-system-block-diagram.png" width="85%">
+</p>
+
+<p align="center">
+  <b>Figure 6 - PCB-level electrical architecture</b>
+</p>
+
+Power enters from the 12 V battery rail. The 12 V rail feeds the three motor-driver sections directly, while a buck converter generates the 5 V rail for peripheral power. A local 3.3 V regulator then supplies the MCU logic domain. This separation keeps the high-current motor path away from the low-voltage controller and sensor rails, while still sharing a common ground reference.
+
+The final PCB uses three motor-driver stages, one per finger motor. Each driver receives a dedicated MCU command path for PWM/enable and direction control, then drives its matching motor connector. The motor connectors are placed near the mechanical exit points for the fingers so the wiring can leave the PCB in the same physical direction as the tendons and motor assemblies. This reduces cable crossing and makes assembly easier because each motor, encoder, and force-sensor connection naturally maps to one finger.
+
+The sensing side follows the same per-finger layout. Three force sensors are routed into ADC-capable MCU pins, giving one contact-force measurement per finger. The encoder connections are grouped as feedback inputs so the firmware can measure travel and release distance for each motor channel. The connection diagram was used as a net-level check to keep the motor, sensor, encoder, USB, reset, and power rails separated by function before routing the board.
+
+<p align="center">
+  <img src="media/pcb-3d-render.png" width="70%">
+</p>
+
+<p align="center">
+  <b>Figure 7 - 3D render of the custom controller PCB</b>
+</p>
+
+<p align="center">
+  <img src="media/pcb-routing-layout.png" width="70%">
+</p>
+
+<p align="center">
+  <b>Figure 8 - PCB routing and component placement</b>
+</p>
+
+The pin map reflected in firmware is:
 
 | Function | Pins |
 | --- | --- |
@@ -112,7 +144,7 @@ The CubeMX project is configured for a custom board. The custom PCB's firmware-f
 | Encoders | TIM2 on PA15/PB3, TIM3 on PA6/PA7, TIM4 on PB6/PB7 |
 | USB CDC | PA11, PA12 |
 
-Board photos, schematic exports, and PCB renders should be placed in `docs/media/` and linked from this portfolio when available. The current folder did not include those media files, so the repository includes a media checklist rather than fabricated images.
+The PCB routing reflects these groups physically: motor-driver components are placed along the upper edge near the motor headers, the MCU sits near the center to shorten control traces, and the power-entry and regulation components sit near the lower edge where the battery and USB connectors are accessible. This placement keeps the board readable during debugging while keeping the high-current and low-level signal paths organized.
 
 ## Robot Design
 
@@ -168,7 +200,7 @@ A key challenge is that pressure sensors and mechanical fingers rarely behave id
 
 The firmware reports a startup banner, supported command list, and telemetry header over USB CDC. During operation it prints time, motor states, encoder readings, rotation estimates, duty cycles, raw pressure readings, and normalized pressure readings. These logs can be captured during a demonstration to show repeatability and to diagnose root causes when behavior is inconsistent.
 
-The local folder did not include demonstration video, completed-board photos, CAD renders, or rework photos. Those should be added under `docs/media/` before final submission if they are available, then linked from this section.
+The repository now includes mechanical CAD images and PCB design images. A demonstration video, completed-board photos, and any rework photos should still be added under `docs/media/` before final submission if they are available, then linked from this section.
 
 ## Media and Attachments
 
@@ -178,6 +210,7 @@ Recommended final attachments:
 - Photo of the assembled hand.
 - Photo of the custom PCB.
 - CAD render or image of the finger and hand assembly.
+- PCB block diagram, 3D render, and routing layout.
 - Any rework photos, especially if they explain a reliability problem and its fix.
 
-See `docs/media/README.md` for the media checklist.
+See `docs/media/README.md` for the media asset list.

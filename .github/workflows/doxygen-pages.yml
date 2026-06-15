@@ -29,7 +29,9 @@ jobs:
         run: doxygen Doxyfile
 
       - name: Copy portfolio media
-        run: cp -R docs/media docs/doxygen/html/
+        run: |
+          mkdir -p docs/doxygen/html/media
+          cp -R docs/media/. docs/doxygen/html/media/
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
