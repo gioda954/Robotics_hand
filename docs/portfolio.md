@@ -506,15 +506,6 @@ The firmware reports a startup banner, supported command list, and telemetry hea
 
 The repository now includes mechanical CAD images and PCB design images. A demonstration video, completed-board photos, and any rework photos should still be added under `docs/media/` before final submission if they are available, then linked from this section.
 
-## Media and Attachments
+## Final demo video
 
-Recommended final attachments:
-
-- Demonstration video showing `grab`, `release`, and at least one object-specific mode such as `light`, `hard`, `uneven`, or `grabpid`.
-- Photo of the assembled hand.
-- Photo of the custom PCB.
-- CAD render or image of the finger and hand assembly.
-- PCB block diagram, 3D render, and routing layout.
-- Any rework photos, especially if they explain a reliability problem and its fix.
-
-See `docs/media/README.md` for the media asset list.
+https://youtu.be/hA0uSn5qXlU
