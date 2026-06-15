@@ -112,7 +112,7 @@ The CubeMX project is configured for a custom PCB built around the STM32F411CEUx
   <b>Figure 6 - PCB-level electrical architecture</b>
 </p>
 
-Power enters from the 12 V battery rail. The 12 V rail feeds the three motor-driver sections directly, while a buck converter generates the 5 V rail for peripheral power. A local 3.3 V regulator then supplies the MCU logic domain. This separation keeps the high-current motor path away from the low-voltage controller and sensor rails, while still sharing a common ground reference.
+Power enters from the 12 V wall plug rail. The 12 V rail feeds the three motor-driver sections directly, while a buck converter generates the 5 V rail for peripheral power. A local 3.3 V regulator then supplies the MCU logic domain. This separation keeps the high-current motor path away from the low-voltage controller and sensor rails, while still sharing a common ground reference.
 
 The final PCB uses three motor-driver stages, one per finger motor. Each driver receives a dedicated MCU command path for PWM/enable and direction control, then drives its matching motor connector. The motor connectors are placed near the mechanical exit points for the fingers so the wiring can leave the PCB in the same physical direction as the tendons and motor assemblies. This reduces cable crossing and makes assembly easier because each motor, encoder, and force-sensor connection naturally maps to one finger.
 
