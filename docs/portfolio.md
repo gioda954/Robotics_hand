@@ -158,6 +158,310 @@ The firmware is written in C using STM32 HAL and generated CubeIDE support files
 
 The main loop calls `App_Update()` continuously. That update function polls USB commands, runs the 10 ms control loop, ramps motor duty cycle every 25 ms, and prints status telemetry every 100 ms. The control loop reads pressure sensors, updates encoders, evaluates the state of each motor, and then applies stopping, holding, release, setup, adjustment, or PID behavior.
 
+## Firmware Capabilities and Code Excerpts
+
+The firmware is organized around the actions the hand needs to perform during a demonstration: close around an object, release by the same measured travel, grip with different force levels, handle uneven objects, run a pressure feedback mode, manually jog a single finger, run a setup sequence, and stop immediately. These behaviors all use the same per-motor runtime model, so the three fingers can share one control structure while still keeping independent encoder counts, pressure readings, direction signs, and state.
+
+```c
+typedef enum
+{
+  MOTOR_STATE_IDLE = 0,
+  MOTOR_STATE_GRABBING,
+  MOTOR_STATE_HOLDING,
+  MOTOR_STATE_RELEASING,
+  MOTOR_STATE_ADJUSTING,
+  MOTOR_STATE_GRABPID,
+  MOTOR_STATE_LIGHT,
+  MOTOR_STATE_HARD,
+  MOTOR_STATE_UNEVEN,
+  MOTOR_STATE_SETUP_FORWARD,
+  MOTOR_STATE_SETUP_BACKWARD
+} MotorState;
+```
+
+The state enum makes the control loop explicit. A motor is never just "on"; it is grabbing, holding, releasing, adjusting, running pressure control, or moving through the setup routine. The larger `MotorRuntime` structure stores the hardware handles and all motion bookkeeping for one finger:
+
+```c
+typedef struct
+{
+  TIM_HandleTypeDef *encoder_timer;
+  TIM_HandleTypeDef *pwm_timer;
+  uint32_t pwm_channel;
+  GPIO_TypeDef *phase_port;
+  uint16_t phase_pin;
+  GPIO_PinState grab_phase;
+  int32_t encoder_grab_sign;
+  uint32_t pressure_index;
+
+  int32_t encoder_position_counts;
+  int32_t grab_start_counts;
+  int32_t grab_travel_counts;
+  int32_t release_start_counts;
+  int32_t release_target_counts;
+  int32_t adjust_start_counts;
+  int32_t adjust_target_counts;
+  int32_t grabpid_integral;
+  int8_t grabpid_output_sign;
+  uint32_t duty_percent;
+  MotorState state;
+} MotorRuntime;
+```
+
+Each finger therefore has its own encoder timer, PWM channel, phase pin, pressure-sensor index, and stored travel distance. This is what lets the firmware stop one finger because it reached pressure while another finger is still closing, and it is also what lets `release` move each finger back by the distance it actually traveled during the previous grasp.
+
+The command layer is intentionally simple. USB CDC parsing sets command flags, and the main loop polls them in priority order. `STOP` and `release` return immediately after being handled, while other commands can start a new behavior:
+
+```c
+static void App_HandleSerialCommands(void)
+{
+  if (USB_CDC_PollStopCommand() != 0U)
+  {
+    App_StopAllMotors("STOP");
+    return;
+  }
+
+  if (USB_CDC_PollReleaseCommand() != 0U)
+  {
+    App_StartRelease();
+    return;
+  }
+
+  if (USB_CDC_PollGrabCommand() != 0U)    { App_StartGrab(); }
+  if (USB_CDC_PollGrabPidCommand() != 0U) { App_StartGrabPid(); }
+  if (USB_CDC_PollLightCommand() != 0U)   { App_StartLight(); }
+  if (USB_CDC_PollHardCommand() != 0U)    { App_StartHard(); }
+  if (USB_CDC_PollUnevenCommand() != 0U)  { App_StartUneven(); }
+  if (USB_CDC_PollSetupCommand() != 0U)   { App_StartSetup(); }
+}
+```
+
+The available user-level functions are:
+
+| Command | Firmware behavior |
+| --- | --- |
+| `grab` | Close all fingers until each reaches its normal pressure threshold or travel limit. |
+| `light` | Close with lower pressure thresholds for delicate objects. |
+| `hard` | Close with higher pressure thresholds for firmer objects. |
+| `uneven` | Close around irregular objects and stop the group once the primary finger plus one secondary finger have contact. |
+| `grabpid` | Regulate each finger around a pressure target using proportional pressure feedback. |
+| `release` | Open each finger by replaying the measured closing distance in reverse. |
+| `adj <motor> <+|-> <rotations>` | Move one selected motor by a specified signed rotation amount. |
+| `setup` | Run each finger forward and backward through the configured travel range. |
+| `STOP` | Immediately stop every motor and clear active motion targets. |
+
+The central update function separates sensing, control decisions, ramping, and telemetry into timed sections. Pressure and encoder updates run every 10 ms. Duty-cycle ramping runs every 25 ms so the motors do not jump abruptly to the target command.
+
+```c
+static void App_Update(void)
+{
+  uint32_t now = HAL_GetTick();
+
+  App_HandleSerialCommands();
+
+  if ((now - last_control_tick) >= CONTROL_UPDATE_MS)
+  {
+    App_ReadPressureSensors();
+
+    for (uint32_t i = 0U; i < MOTOR_COUNT; i++)
+    {
+      Motor_UpdateEncoder(&motors[i]);
+
+      if (motors[i].state == MOTOR_STATE_GRABBING)
+      {
+        App_UpdateGrabMotor(i);
+      }
+      else if (motors[i].state == MOTOR_STATE_GRABPID)
+      {
+        App_UpdateGrabPidMotor(i);
+      }
+      else if (motors[i].state == MOTOR_STATE_RELEASING)
+      {
+        if (Motor_GetLogicalReleaseTravelCounts(&motors[i]) >=
+            motors[i].grab_travel_counts)
+        {
+          Motor_Stop(&motors[i]);
+          motors[i].state = MOTOR_STATE_IDLE;
+        }
+      }
+    }
+
+    App_UpdateUnevenGrab();
+  }
+}
+```
+
+The normal grab behavior combines two stopping conditions: encoder travel and pressure. This protects the mechanism if the finger never contacts an object, while still allowing pressure to stop motion early when contact is detected.
+
+```c
+static void App_UpdateGrabMotor(uint32_t motor_index)
+{
+  MotorRuntime *motor = &motors[motor_index];
+  int32_t forward_counts = Motor_GetLogicalForwardCounts(motor);
+  int32_t command_travel_counts =
+      forward_counts - (motor->grab_start_counts * motor->encoder_grab_sign);
+  uint32_t finger_pressure_percent =
+      pressure_percent[grab_pressure_index[motor_index]];
+
+  if (command_travel_counts < 0L)
+  {
+    command_travel_counts = 0L;
+  }
+  motor->grab_travel_counts = command_travel_counts;
+
+  if ((command_travel_counts >= FORWARD_TRAVEL_LIMIT_COUNTS) ||
+      (finger_pressure_percent >= grab_stop_percent[motor_index]))
+  {
+    App_StopMotorHolding(motor);
+  }
+}
+```
+
+`release` uses the stored `grab_travel_counts` from the last grasp. This makes opening adaptive: if one finger stopped early because it touched the object first, it only backs out by that shorter distance.
+
+```c
+static void App_StartRelease(void)
+{
+  for (uint32_t i = 0U; i < MOTOR_COUNT; i++)
+  {
+    Motor_UpdateEncoder(&motors[i]);
+
+    if (motors[i].grab_travel_counts > 0L)
+    {
+      motors[i].release_start_counts = motors[i].encoder_position_counts;
+      motors[i].release_target_counts = motors[i].grab_travel_counts;
+      motors[i].state = MOTOR_STATE_RELEASING;
+      Motor_SetDirection(&motors[i],
+          (motors[i].grab_phase == GPIO_PIN_SET) ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    }
+    else
+    {
+      motors[i].state = MOTOR_STATE_IDLE;
+      Motor_Stop(&motors[i]);
+    }
+  }
+}
+```
+
+The uneven-object mode was added because the fingers do not always contact an irregular object at the same time. Instead of requiring all three pressure sensors to cross threshold, it waits for the configured primary finger and at least one secondary finger. Once that condition is met, all active fingers are stopped and held.
+
+```c
+if ((threshold_reached[uneven_primary_finger_index] != 0U) &&
+    ((threshold_reached[uneven_secondary_finger_a_index] != 0U) ||
+     (threshold_reached[uneven_secondary_finger_b_index] != 0U)))
+{
+  stop_all = 1U;
+}
+
+if (stop_all != 0U)
+{
+  for (uint32_t i = 0U; i < MOTOR_COUNT; i++)
+  {
+    App_StopMotorHolding(&motors[i]);
+  }
+}
+```
+
+The `grabpid` mode is a pressure feedback behavior. The firmware computes pressure error for each finger, applies the configured PID terms, limits the output duty cycle, and reverses direction when the pressure is above target. Integral and derivative fields are already present, even though the current tuning uses proportional gain only.
+
+```c
+error = (int32_t)grabpid_target_percent[motor_index] -
+        (int32_t)pressure_percent[motor->pressure_index];
+
+motor->grabpid_integral += error;
+derivative = error - motor->grabpid_previous_error;
+motor->grabpid_previous_error = error;
+
+output = ((grabpid_kp[motor_index] * error) +
+          (grabpid_ki[motor_index] * motor->grabpid_integral) +
+          (grabpid_kd[motor_index] * derivative)) / GRABPID_GAIN_SCALE;
+
+output_sign = (output > 0L) ? 1 : -1;
+duty_percent = (uint32_t)Abs32(output);
+if (duty_percent > grabpid_max_duty_percent[motor_index])
+{
+  duty_percent = grabpid_max_duty_percent[motor_index];
+}
+```
+
+Manual adjustment and setup use the same count-based motion logic. `adj` converts a requested rotation into encoder counts and moves one selected finger. `setup` runs each finger forward and backward through the full travel limit so the mechanism can be checked in sequence.
+
+```c
+motor->adjust_start_counts = motor->encoder_position_counts;
+motor->adjust_target_counts = adjust_counts;
+motor->adjust_direction_sign = direction_sign;
+motor->state = MOTOR_STATE_ADJUSTING;
+
+Motor_SetDirection(motor,
+                   (direction_sign > 0) ?
+                   motor->grab_phase :
+                   ((motor->grab_phase == GPIO_PIN_SET) ?
+                    GPIO_PIN_RESET : GPIO_PIN_SET));
+```
+
+The low-level helpers keep the behavior repeatable. Encoder wraparound is handled before accumulating signed position, and all motor directions are converted into logical forward/release travel using `encoder_grab_sign`.
+
+```c
+static void Motor_UpdateEncoder(MotorRuntime *motor)
+{
+  uint32_t raw = __HAL_TIM_GET_COUNTER(motor->encoder_timer) & motor->encoder_mask;
+  int32_t delta;
+
+  if (motor->encoder_mask == 0x0000FFFFUL)
+  {
+    delta = (int32_t)(int16_t)((uint16_t)(raw - motor->encoder_last_raw));
+  }
+  else
+  {
+    delta = (int32_t)(raw - motor->encoder_last_raw);
+  }
+
+  motor->encoder_raw = raw;
+  motor->encoder_last_raw = raw;
+  motor->encoder_position_counts += delta;
+}
+```
+
+Pressure readings are sampled one ADC channel at a time and normalized to percent of the 12-bit ADC range. Reporting both raw and percent values makes debugging easier because the raw value shows the actual sensor measurement while the percent value is easier to compare against thresholds.
+
+```c
+static uint32_t PressurePercentFromRaw(uint32_t raw)
+{
+  if (raw > ADC_MAX_COUNTS)
+  {
+    raw = ADC_MAX_COUNTS;
+  }
+
+  return (raw * 100U) / ADC_MAX_COUNTS;
+}
+```
+
+The PWM ramp function prevents abrupt motor starts and stops. Instead of instantly jumping to a new duty cycle, each motor moves toward its target duty in fixed steps every ramp interval.
+
+```c
+static void Motor_RampDuty(MotorRuntime *motor, uint32_t target_duty_percent)
+{
+  uint32_t next_duty = motor->duty_percent;
+
+  if (next_duty < target_duty_percent)
+  {
+    next_duty += MOTOR_DUTY_RAMP_STEP_PERCENT;
+  }
+  else if (next_duty > target_duty_percent)
+  {
+    if (next_duty > MOTOR_DUTY_RAMP_STEP_PERCENT)
+    {
+      next_duty -= MOTOR_DUTY_RAMP_STEP_PERCENT;
+    }
+    else
+    {
+      next_duty = 0U;
+    }
+  }
+
+  Motor_SetDutyPercent(motor, next_duty);
+}
+```
+
 ## Drivers and Interfaces
 
 The USB CDC command parser is one of the cleaner driver-level pieces. `CDC_Receive_FS()` parses incoming bytes into complete line commands, accepts backspace, handles command buffer overflow by resetting the buffer, and queues commands through volatile flags. The main loop later polls those flags with interrupt protection, so the USB receive path remains short and avoids running motor-control logic from the USB callback.
