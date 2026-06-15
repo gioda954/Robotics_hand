@@ -500,11 +500,7 @@ The project is structured around reliability concerns that usually appear in sma
 
 A key challenge is that pressure sensors and mechanical fingers rarely behave identically. The code therefore uses per-finger pressure thresholds, per-finger PID targets, and per-motor direction signs. Another challenge is recovering from partial grasps or irregular objects, which is why the firmware records per-finger travel before release and includes a separate `uneven` behavior.
 
-## Testing and Demonstration
 
-The firmware reports a startup banner, supported command list, and telemetry header over USB CDC. During operation it prints time, motor states, encoder readings, rotation estimates, duty cycles, raw pressure readings, and normalized pressure readings. These logs can be captured during a demonstration to show repeatability and to diagnose root causes when behavior is inconsistent.
-
-The repository now includes mechanical CAD images and PCB design images. A demonstration video, completed-board photos, and any rework photos should still be added under `docs/media/` before final submission if they are available, then linked from this section.
 
 ## Final demo video
 
